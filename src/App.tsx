@@ -1,4 +1,10 @@
 import "@react-pdf-viewer/core/lib/styles/index.css";
+import "@fontsource/atkinson-hyperlegible/400.css";
+import "@fontsource/atkinson-hyperlegible/700.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/source-serif-4/400.css";
+import "@fontsource/source-serif-4/700.css";
 import "katex/dist/katex.min.css";
 import "react-loading-skeleton/dist/skeleton.css";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
@@ -10,6 +16,7 @@ import {
   mdiArrowLeft,
   mdiBookOpenPageVariantOutline,
   mdiChevronLeft,
+  mdiChevronRight,
   mdiClose,
   mdiCogOutline,
   mdiDeleteOutline,
@@ -24,7 +31,6 @@ import {
   mdiMenu,
   mdiPin,
   mdiPinOutline,
-  mdiRestore,
   mdiSquareEditOutline,
   mdiTagOutline,
   mdiUploadOutline,
@@ -49,7 +55,7 @@ import type { ReactNode, RefObject } from "react";
 import { CronosExpression, validate as validateCron } from "cronosjs";
 import { createNoteDraft, importNotesFromJson, type HistoryEntry, type Note, type SortMode } from "@/lib/noteLogic";
 import { getNoteWorker } from "@/workers/client";
-import { selectAllTags, selectVisibleNotes, useNotesStore, type Settings } from "@/store/notes";
+import { selectVisibleNotes, useNotesStore, type EditorFontFamily, type NoteDisplayMode, type Settings } from "@/store/notes";
 import "./index.css";
 
 Modal.setAppElement("#root");
@@ -103,13 +109,36 @@ function AppShell() {
   const searchRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const state = useNotesStore();
-  const visibleNotes = useMemo(() => selectVisibleNotes(state), [state.notes, state.query, state.selectedTag, state.settings.sortMode]);
-  const tags = useMemo(() => selectAllTags(state.notes), [state.notes]);
-  const selectedNote = state.notes.find(note => note.id === state.selectedNoteId) || visibleNotes[0] || state.notes[0];
+  const isTrashView = state.selectedTag === "trash";
+  const visibleNotes = useMemo(() => {
+    if (!isTrashView) return selectVisibleNotes(state);
+    const query = state.query.trim().toLowerCase();
+    return state.notes
+      .filter(note => note.deletedAt)
+      .filter(note => !query || [note.title, note.content, ...note.tags].join(" ").toLowerCase().includes(query))
+      .sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
+  }, [isTrashView, state.notes, state.query, state.selectedTag, state.settings.sortMode]);
+  const tags = useMemo(() => {
+    const values = Array.from(new Set(state.notes.flatMap(note => note.tags)));
+    return state.settings.sortTagsAlphabetically ? values.sort((a, b) => a.localeCompare(b)) : values;
+  }, [state.notes, state.settings.sortTagsAlphabetically]);
   const deletedNotes = state.notes.filter(note => note.deletedAt);
+  const selectedNote = isTrashView
+    ? state.notes.find(note => note.id === state.selectedNoteId && note.deletedAt) || visibleNotes[0]
+    : state.notes.find(note => note.id === state.selectedNoteId && !note.deletedAt) || visibleNotes[0] || state.notes.find(note => !note.deletedAt);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = state.settings.theme;
+    function applyTheme() {
+      const nextTheme = state.settings.theme === "system" && typeof matchMedia !== "undefined"
+        ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : state.settings.theme;
+      document.documentElement.dataset.theme = nextTheme;
+    }
+    applyTheme();
+    if (state.settings.theme !== "system" || typeof matchMedia === "undefined") return;
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", applyTheme);
   }, [state.settings.theme]);
 
   useEffect(() => {
@@ -123,9 +152,10 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
+    if (!state.settings.keyboardShortcuts) return;
     hotkeys("ctrl+shift+i,command+n", event => {
       event.preventDefault();
-      const id = state.createNote("", state.selectedTag === "all" ? [] : [state.selectedTag]);
+      const id = state.createNote("", state.selectedTag === "all" || state.selectedTag === "trash" ? [] : [state.selectedTag]);
       setLocation(`/note/${id}`);
       setMobilePane("editor");
       toast.success("New note created");
@@ -151,7 +181,7 @@ function AppShell() {
       state.replaceSettings({ focusMode: !state.settings.focusMode });
     });
     return () => hotkeys.unbind("ctrl+shift+i,command+n,ctrl+shift+s,command+l,ctrl+shift+p,ctrl+shift+c,ctrl+h,ctrl+shift+f");
-  }, [selectedNote?.id, state.settings.focusMode, state.selectedTag]);
+  }, [selectedNote?.id, state.settings.focusMode, state.settings.keyboardShortcuts, state.selectedTag]);
 
   useEffect(() => {
     const match = location.match(/^\/note\/(.+)$/);
@@ -163,7 +193,8 @@ function AppShell() {
   }, [location, state.notes.length]);
 
   function createNote() {
-    const id = state.createNote("", state.selectedTag === "all" ? [] : [state.selectedTag]);
+    const id = state.createNote("", state.selectedTag === "all" || isTrashView ? [] : [state.selectedTag]);
+    if (isTrashView) state.setSelectedTag("all");
     setLocation(`/note/${id}`);
     setMobilePane("editor");
     requestAnimationFrame(() => editorRef.current?.focus());
@@ -204,12 +235,50 @@ function AppShell() {
   }
 
   const currentViewTitle =
-    state.selectedTag === "all" ? "All Notes" : state.selectedTag === "pinned" ? "Pinned" : `#${state.selectedTag}`;
+    state.selectedTag === "all" ? "All Notes" : state.selectedTag === "pinned" ? "Pinned" : state.selectedTag === "trash" ? "Trash" : `#${state.selectedTag}`;
+
+  function openTrash() {
+    state.setSelectedTag("trash");
+    const firstDeleted = state.notes.find(note => note.deletedAt);
+    if (firstDeleted) state.selectNote(firstDeleted.id);
+    setSidebarOpen(false);
+    setMobilePane("list");
+  }
+
+  function restoreSelectedNote() {
+    if (!selectedNote) return;
+    state.restoreNote(selectedNote.id);
+    toast.success("Note restored");
+    const nextDeleted = deletedNotes.find(note => note.id !== selectedNote.id);
+    if (nextDeleted) state.selectNote(nextDeleted.id);
+    else state.setSelectedTag("all");
+  }
+
+  function deleteSelectedForever() {
+    if (!selectedNote) return;
+    const nextDeleted = deletedNotes.find(note => note.id !== selectedNote.id);
+    state.deleteForever(selectedNote.id);
+    toast.success("Note deleted forever");
+    if (nextDeleted) state.selectNote(nextDeleted.id);
+    else state.setSelectedTag("all");
+  }
+
+  function emptyTrash() {
+    state.emptyTrash();
+    state.setSelectedTag("all");
+    toast.success("Trash emptied");
+  }
+
+  async function exportAllNotes() {
+    const bytes = await getNoteWorker().exportZip(state.notes.filter(note => !note.deletedAt));
+    saveAs(new Blob([bytes], { type: "application/zip" }), "quicknote-export.zip");
+    toast.success("Export downloaded");
+  }
 
   return (
     <ThemeProvider theme={theme}>
       <Global styles={{ body: { margin: 0 } }} />
-      <div className={`app-shell ${state.settings.focusMode ? "is-focus-mode" : ""} ${sidebarOpen ? "sidebar-open" : ""} ${noteListOpen ? "" : "note-list-hidden"}`}>
+      <div className={`app-shell display-${state.settings.noteDisplay} line-${state.settings.lineLength} ${state.settings.focusMode ? "is-focus-mode" : ""} ${sidebarOpen ? "sidebar-open" : ""} ${noteListOpen ? "" : "note-list-hidden"}`}>
         <Toaster position="bottom-right" />
         {mobilePane !== "editor" ? (
           <MobileTopBar
@@ -247,7 +316,7 @@ function AppShell() {
               </div>
             </SortableContext>
           </DndContext>
-          <button className="tag-row" type="button" onClick={() => setModal("trash")}>
+          <button className={`tag-row ${state.selectedTag === "trash" ? "selected" : ""}`} type="button" onClick={openTrash}>
             <Icon path={mdiDeleteOutline} size={0.75} /> Trash
             {deletedNotes.length > 0 ? <span className="count-pill">{deletedNotes.length}</span> : null}
           </button>
@@ -265,7 +334,7 @@ function AppShell() {
             {iconButtonLabel("Menu", mdiMenu, () => setSidebarOpen(value => !value), sidebarOpen)}
             <strong className="list-title">{currentViewTitle}</strong>
             <div className="list-toolbar-actions">
-              {iconButtonLabel("New note", mdiSquareEditOutline, createNote)}
+              {isTrashView ? null : iconButtonLabel("New note", mdiSquareEditOutline, createNote)}
               {iconButtonLabel("Toggle focus mode", mdiViewSplitVertical, () => state.replaceSettings({ focusMode: !state.settings.focusMode }), state.settings.focusMode)}
               {iconButtonLabel("Hide notes list", mdiChevronLeft, () => setNoteListOpen(false))}
             </div>
@@ -283,7 +352,7 @@ function AppShell() {
             </select>
           </div>
           {visibleNotes.length === 0 ? (
-            <div className="empty-state">No notes match this view.</div>
+            <div className="empty-state">{isTrashView ? "Trash is empty." : "No notes match this view."}</div>
           ) : (
             <Virtuoso
               className="virtuoso-list"
@@ -295,10 +364,14 @@ function AppShell() {
                   previewLines={state.settings.previewLines}
                   onSelect={() => selectNote(note)}
                   onPin={() => state.togglePin(note.id)}
+                  isTrashView={isTrashView}
                 />
               )}
             />
           )}
+          {isTrashView && deletedNotes.length > 0 ? (
+            <button className="empty-trash-button" type="button" onClick={emptyTrash}>Empty Trash</button>
+          ) : null}
         </section>
         <main className={`editor-pane ${mobilePane === "editor" ? "mobile-open" : ""}`}>
           <Switch>
@@ -328,20 +401,27 @@ function AppShell() {
                   noteListOpen={noteListOpen}
                   showNoteList={() => setNoteListOpen(true)}
                   createNote={createNote}
+                  isTrashView={isTrashView}
+                  restoreNote={restoreSelectedNote}
+                  deleteForever={deleteSelectedForever}
                 />
               ) : (
-                <div className="editor-empty">
-                  <Skeleton count={5} />
-                </div>
+                <div className="editor-empty">{isTrashView ? "Select a deleted note." : <Skeleton count={5} />}</div>
               )}
             </Route>
           </Switch>
         </main>
         <ShareModal note={selectedNote} isOpen={modal === "share"} onClose={() => setModal(null)} />
         <HistoryModal note={selectedNote} isOpen={modal === "history"} onClose={() => setModal(null)} />
-        <SettingsModal settings={state.settings} isOpen={modal === "settings"} onClose={() => setModal(null)} onChange={state.replaceSettings} />
+        <SettingsModal
+          settings={state.settings}
+          isOpen={modal === "settings"}
+          onClose={() => setModal(null)}
+          onChange={state.replaceSettings}
+          onImport={() => setModal("import")}
+          onExport={exportAllNotes}
+        />
         <ImportModal isOpen={modal === "import"} onClose={() => setModal(null)} />
-        <TrashModal notes={deletedNotes} isOpen={modal === "trash"} onClose={() => setModal(null)} />
       </div>
     </ThemeProvider>
   );
@@ -396,18 +476,18 @@ function SortableTag({ tag, selected, onClick }: { tag: string; selected: boolea
   );
 }
 
-function NoteListItem({ note, selected, previewLines, onSelect, onPin }: { note: Note; selected: boolean; previewLines: number; onSelect: () => void; onPin: () => void }) {
+function NoteListItem({ note, selected, previewLines, onSelect, onPin, isTrashView = false }: { note: Note; selected: boolean; previewLines: number; onSelect: () => void; onPin: () => void; isTrashView?: boolean }) {
   return (
     <article className={`note-list-item ${selected ? "selected" : ""}`} onClick={onSelect}>
       <div className="note-list-title">
         <span>{note.title}</span>
-        <button type="button" aria-label="Toggle pin" onClick={event => { event.stopPropagation(); onPin(); }}>
+        {!isTrashView ? <button type="button" aria-label="Toggle pin" onClick={event => { event.stopPropagation(); onPin(); }}>
           <Icon path={note.isPinned ? mdiPin : mdiPinOutline} size={0.68} />
-        </button>
+        </button> : null}
       </div>
       <p style={{ WebkitLineClamp: previewLines }}>{note.content.replace(/\s+/g, " ") || "Empty note"}</p>
       <div className="note-meta">
-        <span>{timeagoFormat(note.updatedAt)}</span>
+        <span>{isTrashView && note.deletedAt ? `Deleted ${timeagoFormat(note.deletedAt)}` : timeagoFormat(note.updatedAt)}</span>
         {note.tags.slice(0, 2).map(tag => <span key={tag}>#{tag}</span>)}
       </div>
     </article>
@@ -432,6 +512,9 @@ function Editor(props: {
   noteListOpen: boolean;
   showNoteList: () => void;
   createNote: () => void;
+  isTrashView: boolean;
+  restoreNote: () => void;
+  deleteForever: () => void;
 }) {
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewMode, setPreviewMode] = useState<PreviewMode>(props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
@@ -495,11 +578,18 @@ function Editor(props: {
         <button className="mobile-editor-back" type="button" aria-label="Back to notes" onClick={props.onBackToList}>
           <Icon path={mdiArrowLeft} size={0.8} />
         </button>
-        <div className="editor-title">
-          <strong>{props.note.title}</strong>
-          <span>{dayjs(props.note.updatedAt).fromNow?.() || dayjs(props.note.updatedAt).format("MMM D")}</span>
-        </div>
-        <div className="toolbar-actions">
+        {props.isTrashView ? (
+          <div className="trash-note-actions">
+            <button className="danger-outline-action" type="button" onClick={props.deleteForever}>Delete Forever</button>
+            <button className="restore-note-action" type="button" onClick={props.restoreNote}>Restore Note</button>
+          </div>
+        ) : (
+          <>
+            <div className="editor-title">
+              <strong>{props.note.title}</strong>
+              <span>{dayjs(props.note.updatedAt).fromNow?.() || dayjs(props.note.updatedAt).format("MMM D")}</span>
+            </div>
+            <div className="toolbar-actions">
           {iconButtonLabel(previewMode === "edit" ? "Show preview" : "Hide preview", mdiEyeOutline, togglePreview, previewMode !== "edit")}
           {iconButtonLabel("Insert checklist", mdiFormatListChecks, props.insertChecklist)}
           <div className="toolbar-popover-wrap">
@@ -554,27 +644,39 @@ function Editor(props: {
               </div>
             ) : null}
           </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
-      <div className={`editor-workspace preview-${previewMode}`}>
+      {props.isTrashView ? (
+        <article className="trash-note-view" data-font={props.settings.editorFontFamily} style={{ fontSize: props.settings.editorFontSize }}>
+          {props.note.content.split(/\r?\n/).map((line, index) => line ? <p key={index}>{line}</p> : <br key={index} />)}
+        </article>
+      ) : <div className={`editor-workspace preview-${previewMode}`}>
         {previewMode !== "preview" ? (
           <textarea
             ref={props.editorRef}
             value={props.note.content}
             onChange={event => props.updateContent(event.target.value)}
             style={{ fontSize: props.settings.editorFontSize }}
+            data-font={props.settings.editorFontFamily}
             placeholder="Start typing..."
           />
         ) : null}
         {previewMode !== "edit" ? (
-          <section className="markdown-preview" dangerouslySetInnerHTML={{ __html: previewHtml || "<p>Preview will appear here.</p>" }} />
+          <section
+            className="markdown-preview"
+            data-font={props.settings.editorFontFamily}
+            style={{ fontSize: props.settings.editorFontSize }}
+            dangerouslySetInnerHTML={{ __html: previewHtml || "<p>Preview will appear here.</p>" }}
+          />
         ) : null}
-      </div>
-      <div className="tag-editor tag-editor-bottom">
+      </div>}
+      {!props.isTrashView ? <div className="tag-editor tag-editor-bottom">
         <div className="tag-chips">{props.note.tags.length ? props.note.tags.map(tag => <span key={tag}>#{tag}</span>) : <span>No tags</span>}</div>
         <input value={props.tagDraft} onChange={event => props.setTagDraft(event.target.value)} placeholder="Add tags, comma separated" />
         <button type="button" onClick={props.saveTags}>Save tags</button>
-      </div>
+      </div> : null}
     </>
   );
 }
@@ -654,18 +756,174 @@ function HistoryModal({ note, isOpen, onClose }: { note?: Note; isOpen: boolean;
   );
 }
 
-function SettingsModal({ settings, isOpen, onClose, onChange }: { settings: Settings; isOpen: boolean; onClose: () => void; onChange: (settings: Partial<Settings>) => void }) {
+type SettingsTab = "account" | "display" | "tools";
+
+function SettingsModal({
+  settings,
+  isOpen,
+  onClose,
+  onChange,
+  onImport,
+  onExport,
+}: {
+  settings: Settings;
+  isOpen: boolean;
+  onClose: () => void;
+  onChange: (settings: Partial<Settings>) => void;
+  onImport: () => void;
+  onExport: () => void;
+}) {
   const cronOk = validateCron("*/10 * * * *");
   const nextBackup = CronosExpression.parse("*/10 * * * *").nextDate(new Date());
+  const [tab, setTab] = useState<SettingsTab>("display");
+  const displayOptions: Array<[NoteDisplayMode, string, Settings["previewLines"]]> = [
+    ["comfy", "Comfy", 2],
+    ["condensed", "Condensed", 1],
+    ["expanded", "Expanded", 3],
+  ];
+  const sortOptions: Array<[SortMode, string]> = [
+    ["name-asc", "Name: A-Z"],
+    ["name-desc", "Name: Z-A"],
+    ["created-desc", "Created: Newest"],
+    ["created-asc", "Created: Oldest"],
+    ["modified-desc", "Modified: Newest"],
+    ["modified-asc", "Modified: Oldest"],
+  ];
+  const fontOptions: Array<[EditorFontFamily, string]> = [
+    ["system", "System UI"],
+    ["atkinson", "Atkinson Hyperlegible"],
+    ["inter", "Inter"],
+    ["serif", "Source Serif"],
+    ["mono", "Monospace"],
+  ];
+
+  function radioRow(label: string, checked: boolean, onSelect: () => void) {
+    return (
+      <button className="settings-choice-row" type="button" onClick={onSelect}>
+        <span>{label}</span>
+        <span className={`settings-radio ${checked ? "checked" : ""}`} aria-hidden="true" />
+      </button>
+    );
+  }
+
+  function switchRow(label: string, checked: boolean, onToggle: () => void) {
+    return (
+      <label className="settings-switch-row">
+        <span>{label}</span>
+        <input type="checkbox" checked={checked} onChange={onToggle} />
+      </label>
+    );
+  }
+
+  function actionRow(label: string, onClick: () => void) {
+    return (
+      <button className="settings-action-row" type="button" onClick={onClick}>
+        <span>{label}</span>
+        <Icon path={mdiChevronRight} size={0.72} />
+      </button>
+    );
+  }
+
   return (
-    <AppModal isOpen={isOpen} onClose={onClose} title="Settings">
-      <div className="settings-grid">
-        <label>Theme<select value={settings.theme} onChange={event => onChange({ theme: event.target.value as Settings["theme"] })}><option value="light">Light</option><option value="dark">Dark</option></select></label>
-        <label>Preview lines<select value={settings.previewLines} onChange={event => onChange({ previewLines: Number(event.target.value) as Settings["previewLines"] })}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option></select></label>
-        <label>Editor size<input type="range" min={14} max={22} value={settings.editorFontSize} onChange={event => onChange({ editorFontSize: Number(event.target.value) })} /></label>
-        <label className="check-row"><input type="checkbox" checked={settings.focusMode} onChange={event => onChange({ focusMode: event.target.checked })} /> Focus mode</label>
+    <AppModal isOpen={isOpen} onClose={onClose} title="Settings" className="settings-modal">
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        {(["account", "display", "tools"] as SettingsTab[]).map(item => (
+          <button key={item} type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)}>
+            {item[0]?.toUpperCase()}{item.slice(1)}
+          </button>
+        ))}
       </div>
-      <p className="settings-note">Autosave check: {cronOk ? "valid" : "invalid"}. Next local backup reminder: {nextBackup?.toLocaleTimeString()}.</p>
+      <div className="settings-panel">
+        {tab === "account" ? (
+          <div className="settings-section-stack">
+            <section className="settings-section">
+              <h3>ACCOUNT</h3>
+              <div className="settings-card">
+                <div className="settings-static-row"><span>Storage</span><strong>Local IndexedDB</strong></div>
+                <div className="settings-static-row"><span>Sync</span><strong>Local browser tabs</strong></div>
+                <div className="settings-static-row"><span>Autosave</span><strong>{cronOk ? "Active" : "Unavailable"}</strong></div>
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>BACKUP</h3>
+              <div className="settings-card">
+                <div className="settings-static-row"><span>Next reminder</span><strong>{nextBackup?.toLocaleTimeString() || "Not scheduled"}</strong></div>
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "display" ? (
+          <div className="settings-section-stack">
+            <section className="settings-section">
+              <h3>NOTE DISPLAY</h3>
+              <div className="settings-card">
+                {displayOptions.map(([value, label, previewLines]) => radioRow(label, settings.noteDisplay === value, () => onChange({ noteDisplay: value, previewLines })))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>LINE LENGTH</h3>
+              <div className="settings-card">
+                {radioRow("Narrow (65-75 chars)", settings.lineLength === "narrow", () => onChange({ lineLength: "narrow" }))}
+                {radioRow("Full width", settings.lineLength === "full", () => onChange({ lineLength: "full" }))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>FONT</h3>
+              <div className="settings-card">
+                {fontOptions.map(([value, label]) => radioRow(label, settings.editorFontFamily === value, () => onChange({ editorFontFamily: value })))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>FONT SIZE</h3>
+              <div className="settings-card">
+                <label className="settings-slider-row">
+                  <span>{settings.editorFontSize}px</span>
+                  <input type="range" min={14} max={22} value={settings.editorFontSize} onChange={event => onChange({ editorFontSize: Number(event.target.value) })} />
+                </label>
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>SORT BY</h3>
+              <div className="settings-card">
+                {sortOptions.map(([value, label]) => radioRow(label, settings.sortMode === value, () => onChange({ sortMode: value })))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>TAGS</h3>
+              <div className="settings-card">
+                {switchRow("Sort Alphabetically", settings.sortTagsAlphabetically, () => onChange({ sortTagsAlphabetically: !settings.sortTagsAlphabetically }))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <h3>THEME</h3>
+              <div className="settings-card">
+                {radioRow("System", settings.theme === "system", () => onChange({ theme: "system" }))}
+                {radioRow("Light", settings.theme === "light", () => onChange({ theme: "light" }))}
+                {radioRow("Dark", settings.theme === "dark", () => onChange({ theme: "dark" }))}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {tab === "tools" ? (
+          <div className="settings-section-stack">
+            <section className="settings-section">
+              <h3>TOOLS</h3>
+              <div className="settings-card">
+                {actionRow("Import Notes", () => { onClose(); onImport(); })}
+                {actionRow("Export Notes", onExport)}
+                {switchRow("Keyboard Shortcuts", settings.keyboardShortcuts, () => onChange({ keyboardShortcuts: !settings.keyboardShortcuts }))}
+              </div>
+            </section>
+            <section className="settings-section">
+              <div className="settings-card">
+                {switchRow("Notify on remote changes", settings.notifyRemoteChanges, () => onChange({ notifyRemoteChanges: !settings.notifyRemoteChanges }))}
+              </div>
+            </section>
+          </div>
+        ) : null}
+      </div>
     </AppModal>
   );
 }
@@ -734,25 +992,9 @@ function ImportModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void
   );
 }
 
-function TrashModal({ notes, isOpen, onClose }: { notes: Note[]; isOpen: boolean; onClose: () => void }) {
-  const restoreNote = useNotesStore(state => state.restoreNote);
+function AppModal({ isOpen, onClose, title, children, className = "" }: { isOpen: boolean; onClose: () => void; title: string; children: ReactNode; className?: string }) {
   return (
-    <AppModal isOpen={isOpen} onClose={onClose} title="Trash">
-      <div className="modal-stack">
-        {notes.length === 0 ? <p>No deleted notes.</p> : notes.map(note => (
-          <div className="trash-row" key={note.id}>
-            <div><strong>{note.title}</strong><span>{note.deletedAt ? dayjs(note.deletedAt).format("MMM D, YYYY") : ""}</span></div>
-            <button type="button" onClick={() => restoreNote(note.id)}><Icon path={mdiRestore} size={0.75} /> Restore</button>
-          </div>
-        ))}
-      </div>
-    </AppModal>
-  );
-}
-
-function AppModal({ isOpen, onClose, title, children }: { isOpen: boolean; onClose: () => void; title: string; children: ReactNode }) {
-  return (
-    <Modal isOpen={isOpen} onRequestClose={onClose} className="app-modal" overlayClassName="modal-overlay">
+    <Modal isOpen={isOpen} onRequestClose={onClose} className={`app-modal ${className}`} overlayClassName="modal-overlay">
       <div className="modal-header">
         <h2>{title}</h2>
         {iconButtonLabel("Close", mdiClose, onClose)}

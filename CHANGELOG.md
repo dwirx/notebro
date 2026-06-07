@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added a Simplenote-style document information popover with synced, modified, created, word, and character details.
 - Added an overflow actions menu for pin, Markdown, copy link, history, publish, collaborate, and trash actions.
+- Added a full Trash view with deleted-note list, read-only deleted note preview, restore, delete forever, and empty trash actions.
+- Added a tabbed Settings dialog with Account, Display, and Tools sections.
+- Added Display settings for note density, editor line length, sort order, tag sorting, and theme.
+- Added bundled note fonts: System UI, Atkinson Hyperlegible, Inter, Source Serif, and Monospace.
+- Added Display controls for editor font family and font size.
+- Added Tools settings for import, export, keyboard shortcuts, and remote-change notifications.
 
 ### Changed
 
@@ -17,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Reworked the note-list header to match the compact Simplenote-style toolbar with icon-only new note and focus mode controls.
 - Reworked the mobile editor into a Simplenote-style single toolbar with back, preview, checklist, info, and overflow actions.
 - Reworked the hidden note-list state so the editor toolbar shows icon-only new note and show-list actions instead of a floating text button.
+- Reworked the Settings dialog visual structure to match Simplenote-style tabbed panels and row controls.
+- Reworked line length to use character-based sizing for a better notes reading measure.
+- Reworked Trash from a modal into a Simplenote-style main view.
 
 ### Fixed
 

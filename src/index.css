@@ -128,8 +128,7 @@ button {
 
 .brand-row span,
 .editor-title span,
-.settings-note,
-.trash-row span {
+.settings-note {
   display: block;
   color: var(--muted);
   font-size: 12px;
@@ -211,7 +210,6 @@ button {
 .modal-actions button,
 .inline-form button,
 .settings-grid button,
-.trash-row button,
 .tag-editor button {
   display: inline-flex;
   align-items: center;
@@ -337,9 +335,34 @@ button {
   cursor: pointer;
 }
 
+.app-shell.display-condensed .note-list-item {
+  padding-block: 8px;
+}
+
+.app-shell.display-expanded .note-list-item {
+  padding-block: 14px;
+}
+
 .note-list-item:hover,
 .note-list-item.selected {
   background: var(--primary-soft);
+}
+
+.app-shell .note-list-pane .empty-trash-button {
+  width: 100%;
+  min-height: 44px;
+  margin-top: auto;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.empty-trash-button:hover {
+  background: oklch(0.28 0.06 28);
 }
 
 .note-list-title {
@@ -470,6 +493,44 @@ button {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+
+.trash-note-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  margin-left: auto;
+}
+
+.danger-outline-action,
+.restore-note-action {
+  min-height: 26px;
+  padding: 0 16px;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger-outline-action {
+  border: 2px solid var(--danger);
+  color: var(--danger);
+}
+
+.danger-outline-action:hover {
+  background: oklch(0.28 0.06 28);
+}
+
+.restore-note-action {
+  border: 2px solid var(--primary);
+  background: var(--primary);
+  color: white;
+}
+
+.restore-note-action:hover {
+  filter: brightness(1.08);
 }
 
 .mobile-editor-back {
@@ -686,6 +747,67 @@ button {
   font-weight: 450;
 }
 
+.editor-workspace textarea[data-font="system"],
+.markdown-preview[data-font="system"],
+.trash-note-view[data-font="system"] {
+  font-family: "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+.editor-workspace textarea[data-font="inter"],
+.markdown-preview[data-font="inter"],
+.trash-note-view[data-font="inter"] {
+  font-family: "Inter", "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+.editor-workspace textarea[data-font="atkinson"],
+.markdown-preview[data-font="atkinson"],
+.trash-note-view[data-font="atkinson"] {
+  font-family: "Atkinson Hyperlegible", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
+
+.editor-workspace textarea[data-font="serif"],
+.markdown-preview[data-font="serif"],
+.trash-note-view[data-font="serif"] {
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+}
+
+.editor-workspace textarea[data-font="mono"],
+.markdown-preview[data-font="mono"],
+.trash-note-view[data-font="mono"] {
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+.app-shell.line-narrow .editor-workspace textarea {
+  max-width: 74ch;
+  margin-inline: auto;
+}
+
+.app-shell.line-full .editor-workspace textarea {
+  max-width: none;
+}
+
+.trash-note-view {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  width: 100%;
+  max-width: 74ch;
+  margin: 0 auto;
+  padding: 48px 24px;
+  color: var(--ink);
+  line-height: 1.65;
+}
+
+.app-shell.line-full .trash-note-view {
+  max-width: none;
+  margin: 0;
+  padding-inline: clamp(32px, 12vw, 128px);
+}
+
+.trash-note-view p {
+  margin: 0 0 1rem;
+}
+
 .markdown-preview,
 .published-note {
   min-width: 0;
@@ -695,6 +817,16 @@ button {
   background: var(--surface);
   line-height: 1.65;
   font-size: 15px;
+}
+
+.app-shell.line-narrow .markdown-preview > *,
+.app-shell.line-narrow .published-note > * {
+  max-width: 74ch;
+}
+
+.app-shell.line-full .markdown-preview > *,
+.app-shell.line-full .published-note > * {
+  max-width: none;
 }
 
 .markdown-preview > :first-child,
@@ -811,6 +943,25 @@ button {
   padding: 12px;
   border-radius: var(--radius);
   background: var(--raised);
+}
+
+.app-shell.line-full .markdown-preview p,
+.app-shell.line-full .markdown-preview h1,
+.app-shell.line-full .markdown-preview h2,
+.app-shell.line-full .markdown-preview h3,
+.app-shell.line-full .markdown-preview ul,
+.app-shell.line-full .markdown-preview ol,
+.app-shell.line-full .markdown-preview blockquote,
+.app-shell.line-full .markdown-preview pre,
+.app-shell.line-full .published-note p,
+.app-shell.line-full .published-note h1,
+.app-shell.line-full .published-note h2,
+.app-shell.line-full .published-note h3,
+.app-shell.line-full .published-note ul,
+.app-shell.line-full .published-note ol,
+.app-shell.line-full .published-note blockquote,
+.app-shell.line-full .published-note pre {
+  max-width: none;
 }
 
 .empty-state,
@@ -945,6 +1096,186 @@ button {
   justify-content: start;
 }
 
+.settings-modal {
+  width: min(592px, calc(100vw - 32px));
+  height: min(496px, calc(100vh - 48px));
+  max-height: min(496px, calc(100vh - 48px));
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+.settings-modal .modal-header {
+  min-height: 50px;
+  padding: 8px 14px;
+}
+
+.settings-modal .modal-header h2 {
+  font-size: 14px;
+}
+
+.settings-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.settings-tabs button {
+  min-width: 64px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-tabs button.active {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+
+.settings-panel {
+  height: calc(100% - 94px);
+  overflow-y: auto;
+  padding: 36px 0 48px;
+}
+
+.settings-section-stack {
+  display: grid;
+  gap: 32px;
+  width: min(332px, calc(100% - 48px));
+  margin: 0 auto;
+}
+
+.settings-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.settings-card {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.settings-choice-row,
+.settings-action-row,
+.settings-switch-row,
+.settings-static-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  text-align: left;
+}
+
+.settings-choice-row:last-child,
+.settings-action-row:last-child,
+.settings-switch-row:last-child,
+.settings-static-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-choice-row,
+.settings-action-row {
+  cursor: pointer;
+}
+
+.settings-choice-row:hover,
+.settings-action-row:hover,
+.settings-switch-row:hover {
+  background: var(--raised);
+}
+
+.settings-static-row span,
+.settings-static-row strong {
+  min-width: 0;
+}
+
+.settings-static-row strong {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.settings-radio {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.settings-radio.checked {
+  border-color: oklch(0.72 0.18 145);
+  background: oklch(0.72 0.18 145);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.settings-switch-row input {
+  appearance: none;
+  width: 24px;
+  height: 15px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: oklch(0.72 0.01 235);
+  padding: 0;
+  cursor: pointer;
+}
+
+.settings-switch-row input::before {
+  content: "";
+  display: block;
+  width: 11px;
+  height: 11px;
+  margin: 2px;
+  border-radius: 999px;
+  background: white;
+  transition: transform 160ms ease-out;
+}
+
+.settings-switch-row input:checked {
+  background: oklch(0.72 0.18 145);
+}
+
+.settings-switch-row input:checked::before {
+  transform: translateX(9px);
+}
+
+.settings-slider-row {
+  display: grid;
+  gap: 10px;
+  min-height: 62px;
+  padding: 10px 16px;
+  border: 0;
+  background: transparent;
+}
+
+.settings-slider-row span {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.settings-slider-row input {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
 .dropzone {
   display: grid;
   place-items: center;
@@ -957,15 +1288,6 @@ button {
 
 .pdf-preview {
   height: 420px;
-}
-
-.trash-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
 }
 
 ins {

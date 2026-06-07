@@ -12,14 +12,23 @@ import {
 } from "@/lib/noteLogic";
 import { indexedDbStorage } from "./indexedDbStorage";
 
-export type ThemeMode = "light" | "dark";
+export type ThemeMode = "system" | "light" | "dark";
+export type NoteDisplayMode = "comfy" | "condensed" | "expanded";
+export type LineLengthMode = "narrow" | "full";
+export type EditorFontFamily = "system" | "inter" | "atkinson" | "serif" | "mono";
 
 export type Settings = {
   sortMode: SortMode;
   previewLines: 1 | 2 | 3;
   theme: ThemeMode;
   editorFontSize: number;
+  editorFontFamily: EditorFontFamily;
   focusMode: boolean;
+  noteDisplay: NoteDisplayMode;
+  lineLength: LineLengthMode;
+  sortTagsAlphabetically: boolean;
+  keyboardShortcuts: boolean;
+  notifyRemoteChanges: boolean;
 };
 
 export type NotesState = {
@@ -34,6 +43,8 @@ export type NotesState = {
   createNote: (content?: string, tags?: string[]) => string;
   updateNote: (id: string, content: string) => void;
   deleteNote: (id: string) => void;
+  deleteForever: (id: string) => void;
+  emptyTrash: () => void;
   restoreNote: (id: string) => void;
   togglePin: (id: string) => void;
   toggleMarkdown: (id: string) => void;
@@ -74,7 +85,13 @@ const defaultSettings: Settings = {
   previewLines: 2,
   theme: "dark",
   editorFontSize: 17,
+  editorFontFamily: "system",
   focusMode: false,
+  noteDisplay: "condensed",
+  lineLength: "narrow",
+  sortTagsAlphabetically: false,
+  keyboardShortcuts: true,
+  notifyRemoteChanges: false,
 };
 
 export const useNotesStore = create<NotesState>()(
@@ -115,6 +132,17 @@ export const useNotesStore = create<NotesState>()(
         set(state => {
           const note = state.notes.find(note => note.id === id);
           if (note) note.deletedAt = now();
+        }),
+      deleteForever: id =>
+        set(state => {
+          state.notes = state.notes.filter(note => note.id !== id);
+          if (state.selectedNoteId === id) state.selectedNoteId = state.notes.find(note => !note.deletedAt)?.id || state.notes[0]?.id || "";
+        }),
+      emptyTrash: () =>
+        set(state => {
+          const deletedIds = new Set(state.notes.filter(note => note.deletedAt).map(note => note.id));
+          state.notes = state.notes.filter(note => !deletedIds.has(note.id));
+          if (deletedIds.has(state.selectedNoteId)) state.selectedNoteId = state.notes.find(note => !note.deletedAt)?.id || state.notes[0]?.id || "";
         }),
       restoreNote: id =>
         set(state => {
@@ -191,7 +219,7 @@ export const useNotesStore = create<NotesState>()(
           settings: {
             ...defaultSettings,
             ...state.settings,
-            theme: state.settings?.theme === "light" ? "dark" : state.settings?.theme || "dark",
+            theme: state.settings?.theme || "dark",
           },
         };
       },
