@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Added a Simplenote-style document information popover with synced, modified, created, word, and character details.
 - Added an overflow actions menu for pin, Markdown, copy link, history, publish, collaborate, and trash actions.
+- Added a Simplenote-style app drawer menu with All Notes, Trash, Settings, server status, Keyboard Shortcuts, Help, and About entries.
+- Added a Keyboard Shortcuts modal covering View, Navigation, and Note Editing shortcuts.
+- Added a command palette opened with `Ctrl + K`.
 - Added a full Trash view with deleted-note list, read-only deleted note preview, restore, delete forever, and empty trash actions.
 - Added a tabbed Settings dialog with Account, Display, and Tools sections.
 - Added Display settings for note density, editor line length, sort order, tag sorting, and theme.
@@ -32,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Removed the duplicated notes-list hide/show control from the editor toolbar.
 - Simplified the hidden-notes reveal button so it appears as a single compact `Notes` action.
 - Fixed direct mobile note routes so `/note/:id` opens the editor pane instead of the note list.
+- Fixed mobile Markdown notes opening in live preview by default. Mobile now opens notes in edit mode first.
 
 ### Documentation
 

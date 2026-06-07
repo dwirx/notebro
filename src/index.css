@@ -90,9 +90,9 @@ button {
   z-index: 40;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   width: min(244px, 88vw);
-  padding: 10px 0;
+  padding: 40px 0 0;
   background: var(--surface);
   border-right: 1px solid var(--border);
   transform: translateX(-100%);
@@ -168,6 +168,22 @@ button {
   cursor: pointer;
 }
 
+.app-menu-main {
+  display: grid;
+}
+
+.app-menu-main .tag-row {
+  min-height: 42px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.app-menu-main .tag-row svg {
+  color: var(--muted);
+}
+
 .tag-row:hover,
 .tag-row.selected,
 .icon-button:hover,
@@ -191,18 +207,28 @@ button {
   display: grid;
   gap: 0;
   margin-top: auto;
-  padding-top: 10px;
+  padding: 12px 0 18px;
   border-top: 1px solid var(--border);
 }
 
 .sidebar-footer button {
   justify-content: flex-start;
-  min-height: 38px;
-  padding: 0 16px;
+  min-height: 40px;
+  padding: 0 18px;
   border: 0;
   border-radius: 0;
   background: transparent;
   color: var(--muted);
+}
+
+.server-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 18px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .sidebar-footer button,
@@ -233,7 +259,7 @@ button {
 .sidebar-footer button {
   justify-content: flex-start;
   min-height: 34px;
-  padding: 0 16px;
+  padding: 0 18px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1274,6 +1300,108 @@ button {
 .settings-slider-row input {
   width: 100%;
   accent-color: var(--primary);
+}
+
+.shortcuts-modal,
+.command-modal {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.shortcuts-panel {
+  display: grid;
+  gap: 22px;
+  max-height: min(620px, calc(100vh - 140px));
+  overflow: auto;
+  padding: 18px;
+}
+
+.shortcut-section h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.shortcut-card,
+.command-list {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.shortcut-row,
+.command-list button {
+  display: grid;
+  grid-template-columns: minmax(130px, 170px) minmax(0, 1fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-row:last-child,
+.command-list button:last-child {
+  border-bottom: 0;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--ink);
+  padding: 1px 7px;
+  font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.shortcut-row span,
+.command-list button span {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.command-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.command-panel input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 12px;
+  outline: none;
+}
+
+.command-list {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.command-list button {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-list button:hover {
+  background: var(--raised);
 }
 
 .dropzone {

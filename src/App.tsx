@@ -7,14 +7,10 @@ import "@fontsource/source-serif-4/400.css";
 import "@fontsource/source-serif-4/700.css";
 import "katex/dist/katex.min.css";
 import "react-loading-skeleton/dist/skeleton.css";
-import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Global, ThemeProvider } from "@emotion/react";
 import {
   mdiArchiveArrowDownOutline,
   mdiArrowLeft,
-  mdiBookOpenPageVariantOutline,
   mdiChevronLeft,
   mdiChevronRight,
   mdiClose,
@@ -27,14 +23,15 @@ import {
   mdiFormatListBulleted,
   mdiFormatListChecks,
   mdiInformationOutline,
+  mdiKeyboardOutline,
   mdiMagnify,
   mdiMenu,
   mdiPin,
   mdiPinOutline,
   mdiSquareEditOutline,
-  mdiTagOutline,
   mdiUploadOutline,
   mdiViewSplitVertical,
+  mdiWifi,
 } from "@mdi/js";
 import { Worker as PdfWorker, Viewer } from "@react-pdf-viewer/core";
 import { BlobReader, TextWriter, ZipReader } from "@zip.js/zip.js";
@@ -83,9 +80,41 @@ const theme = {
   },
 };
 
-type ModalName = "share" | "history" | "settings" | "import" | "trash" | null;
-type MobilePane = "tags" | "list" | "editor";
+type ModalName = "share" | "history" | "settings" | "import" | "trash" | "shortcuts" | "command" | null;
+type MobilePane = "list" | "editor";
 type PreviewMode = "edit" | "split" | "preview";
+
+const shortcutGroups = [
+  {
+    title: "View",
+    items: [
+      ["Ctrl + /", "Show keyboard shortcuts"],
+      ["Ctrl + K", "Show command palette"],
+      ["Ctrl + Shift + F", "Toggle focus mode"],
+      ["Ctrl + Shift + S", "Focus search field"],
+      ["Ctrl + G", "Jump to next match in note"],
+      ["Ctrl + Shift + G", "Jump to previous match in note"],
+    ],
+  },
+  {
+    title: "Navigation",
+    items: [
+      ["Ctrl + Shift + U", "Toggle tag list"],
+      ["Ctrl + Shift + K", "Open note above current one"],
+      ["Ctrl + Shift + J", "Open note below current one"],
+      ["Ctrl + Shift + Y", "Toggle editing content/tags"],
+      ["Ctrl + Shift + L", "Toggle note list (on narrow screens)"],
+    ],
+  },
+  {
+    title: "Note Editing",
+    items: [
+      ["Ctrl + Shift + I", "Create new note"],
+      ["Ctrl + Shift + P", "Toggle Markdown preview"],
+      ["Ctrl + Shift + C", "Insert checklist item"],
+    ],
+  },
+];
 
 function looksLikeMarkdown(content: string) {
   return /(^|\n)(#{1,6}\s|\s*[-*]\s|\s*[-*]\s\[[ xX]\]\s|>|`{3})|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$\$?[^$]+\$\$?/.test(content);
@@ -105,9 +134,11 @@ function AppShell() {
   const [mobilePane, setMobilePane] = useState<MobilePane>("list");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [noteListOpen, setNoteListOpen] = useState(true);
+  const [isNarrow, setIsNarrow] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const state = useNotesStore();
   const isTrashView = state.selectedTag === "trash";
   const visibleNotes = useMemo(() => {
@@ -118,14 +149,19 @@ function AppShell() {
       .filter(note => !query || [note.title, note.content, ...note.tags].join(" ").toLowerCase().includes(query))
       .sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
   }, [isTrashView, state.notes, state.query, state.selectedTag, state.settings.sortMode]);
-  const tags = useMemo(() => {
-    const values = Array.from(new Set(state.notes.flatMap(note => note.tags)));
-    return state.settings.sortTagsAlphabetically ? values.sort((a, b) => a.localeCompare(b)) : values;
-  }, [state.notes, state.settings.sortTagsAlphabetically]);
   const deletedNotes = state.notes.filter(note => note.deletedAt);
   const selectedNote = isTrashView
     ? state.notes.find(note => note.id === state.selectedNoteId && note.deletedAt) || visibleNotes[0]
     : state.notes.find(note => note.id === state.selectedNoteId && !note.deletedAt) || visibleNotes[0] || state.notes.find(note => !note.deletedAt);
+
+  useEffect(() => {
+    if (typeof matchMedia === "undefined") return;
+    const media = matchMedia("(max-width: 720px)");
+    const sync = () => setIsNarrow(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     function applyTheme() {
@@ -153,6 +189,14 @@ function AppShell() {
 
   useEffect(() => {
     if (!state.settings.keyboardShortcuts) return;
+    hotkeys("ctrl+/", event => {
+      event.preventDefault();
+      setModal("shortcuts");
+    });
+    hotkeys("ctrl+k", event => {
+      event.preventDefault();
+      setModal("command");
+    });
     hotkeys("ctrl+shift+i,command+n", event => {
       event.preventDefault();
       const id = state.createNote("", state.selectedTag === "all" || state.selectedTag === "trash" ? [] : [state.selectedTag]);
@@ -164,9 +208,37 @@ function AppShell() {
       event.preventDefault();
       searchRef.current?.focus();
     });
+    hotkeys("ctrl+g", event => {
+      event.preventDefault();
+      jumpMatch(1);
+    });
+    hotkeys("ctrl+shift+g", event => {
+      event.preventDefault();
+      jumpMatch(-1);
+    });
+    hotkeys("ctrl+shift+u", event => {
+      event.preventDefault();
+      setSidebarOpen(value => !value);
+    });
+    hotkeys("ctrl+shift+k", event => {
+      event.preventDefault();
+      selectRelativeNote(-1);
+    });
+    hotkeys("ctrl+shift+j", event => {
+      event.preventDefault();
+      selectRelativeNote(1);
+    });
+    hotkeys("ctrl+shift+y", event => {
+      event.preventDefault();
+      toggleContentTagsFocus();
+    });
+    hotkeys("ctrl+shift+l", event => {
+      event.preventDefault();
+      setNoteListOpen(value => !value);
+    });
     hotkeys("ctrl+shift+p", event => {
       event.preventDefault();
-      if (selectedNote) state.toggleMarkdown(selectedNote.id);
+      window.dispatchEvent(new CustomEvent("quicknote-toggle-preview"));
     });
     hotkeys("ctrl+shift+c", event => {
       event.preventDefault();
@@ -180,8 +252,8 @@ function AppShell() {
       event.preventDefault();
       state.replaceSettings({ focusMode: !state.settings.focusMode });
     });
-    return () => hotkeys.unbind("ctrl+shift+i,command+n,ctrl+shift+s,command+l,ctrl+shift+p,ctrl+shift+c,ctrl+h,ctrl+shift+f");
-  }, [selectedNote?.id, state.settings.focusMode, state.settings.keyboardShortcuts, state.selectedTag]);
+    return () => hotkeys.unbind("ctrl+/,ctrl+k,ctrl+shift+i,command+n,ctrl+shift+s,command+l,ctrl+g,ctrl+shift+g,ctrl+shift+u,ctrl+shift+k,ctrl+shift+j,ctrl+shift+y,ctrl+shift+l,ctrl+shift+p,ctrl+shift+c,ctrl+h,ctrl+shift+f");
+  }, [selectedNote?.id, state.query, state.settings.focusMode, state.settings.keyboardShortcuts, state.selectedTag, visibleNotes]);
 
   useEffect(() => {
     const match = location.match(/^\/note\/(.+)$/);
@@ -206,6 +278,51 @@ function AppShell() {
     setMobilePane("editor");
   }
 
+  function selectRelativeNote(direction: -1 | 1) {
+    if (!selectedNote || visibleNotes.length === 0) return;
+    const index = visibleNotes.findIndex(note => note.id === selectedNote.id);
+    const next = visibleNotes[Math.min(Math.max((index < 0 ? 0 : index) + direction, 0), visibleNotes.length - 1)];
+    if (next) selectNote(next);
+  }
+
+  function jumpMatch(direction: -1 | 1) {
+    if (!selectedNote) return;
+    const query = state.query.trim();
+    if (!query) {
+      toast.error("Search query is empty");
+      searchRef.current?.focus();
+      return;
+    }
+    setMobilePane("editor");
+    requestAnimationFrame(() => {
+      const element = editorRef.current;
+      if (!element) {
+        toast.error("Open edit mode to jump matches");
+        return;
+      }
+      const haystack = selectedNote.content.toLowerCase();
+      const needle = query.toLowerCase();
+      const start = direction > 0 ? element.selectionEnd : Math.max(element.selectionStart - 1, 0);
+      let index = direction > 0 ? haystack.indexOf(needle, start) : haystack.lastIndexOf(needle, start);
+      if (index < 0) index = direction > 0 ? haystack.indexOf(needle) : haystack.lastIndexOf(needle);
+      if (index >= 0) {
+        element.focus();
+        element.setSelectionRange(index, index + query.length);
+      } else {
+        toast.error("No match in note");
+      }
+    });
+  }
+
+  function toggleContentTagsFocus() {
+    const active = document.activeElement;
+    if (active === tagInputRef.current) {
+      editorRef.current?.focus();
+    } else {
+      tagInputRef.current?.focus();
+    }
+  }
+
   function insertChecklist() {
     if (!selectedNote) return;
     const element = editorRef.current;
@@ -226,12 +343,6 @@ function AppShell() {
     state.setTags(selectedNote.id, tagDraft.split(","));
     setTagDraft("");
     toast.success("Tags updated");
-  }
-
-  function onDragEnd(event: DragEndEvent) {
-    const from = String(event.active.id);
-    const to = String(event.over?.id || "");
-    if (from && to && from !== to) state.reorderTag(from, to);
   }
 
   const currentViewTitle =
@@ -275,6 +386,16 @@ function AppShell() {
     toast.success("Export downloaded");
   }
 
+  const commandActions = [
+    { label: "Create new note", shortcut: "Ctrl + Shift + I", action: createNote },
+    { label: "Focus search field", shortcut: "Ctrl + Shift + S", action: () => searchRef.current?.focus() },
+    { label: "Toggle focus mode", shortcut: "Ctrl + Shift + F", action: () => state.replaceSettings({ focusMode: !state.settings.focusMode }) },
+    { label: "Toggle tag list", shortcut: "Ctrl + Shift + U", action: () => setSidebarOpen(value => !value) },
+    { label: "Toggle note list", shortcut: "Ctrl + Shift + L", action: () => setNoteListOpen(value => !value) },
+    { label: "Keyboard shortcuts", shortcut: "Ctrl + /", action: () => setModal("shortcuts") },
+    { label: "Settings", shortcut: "", action: () => setModal("settings") },
+  ];
+
   return (
     <ThemeProvider theme={theme}>
       <Global styles={{ body: { margin: 0 } }} />
@@ -293,39 +414,25 @@ function AppShell() {
         ) : null}
         {sidebarOpen ? <button className="sidebar-backdrop" type="button" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} /> : null}
         <aside className={`tag-pane ${sidebarOpen ? "mobile-open" : ""}`}>
-          <div className="brand-row">
-            <div className="brand-mark"><Icon path={mdiBookOpenPageVariantOutline} size={0.82} /></div>
-            <div>
-              <strong>Quicknote</strong>
-              <span>{state.notes.filter(note => !note.deletedAt).length} notes</span>
-            </div>
-            {iconButtonLabel("Close sidebar", mdiClose, () => setSidebarOpen(false))}
-          </div>
+          <div className="app-menu-main">
           <button className={`tag-row ${state.selectedTag === "all" ? "selected" : ""}`} type="button" onClick={() => { state.setSelectedTag("all"); setSidebarOpen(false); }}>
-            <Icon path={mdiArchiveArrowDownOutline} size={0.75} /> All notes
+            <Icon path={mdiArchiveArrowDownOutline} size={0.75} /> All Notes
           </button>
-          <button className={`tag-row ${state.selectedTag === "pinned" ? "selected" : ""}`} type="button" onClick={() => { state.setSelectedTag("pinned"); setSidebarOpen(false); }}>
-            <Icon path={mdiPin} size={0.75} /> Pinned
-          </button>
-          <DndContext onDragEnd={onDragEnd}>
-            <SortableContext items={tags} strategy={verticalListSortingStrategy}>
-              <div className="tag-group">
-                {tags.map(tag => (
-                  <SortableTag key={tag} tag={tag} selected={state.selectedTag === tag} onClick={() => { state.setSelectedTag(tag); setSidebarOpen(false); }} />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
           <button className={`tag-row ${state.selectedTag === "trash" ? "selected" : ""}`} type="button" onClick={openTrash}>
             <Icon path={mdiDeleteOutline} size={0.75} /> Trash
             {deletedNotes.length > 0 ? <span className="count-pill">{deletedNotes.length}</span> : null}
           </button>
+          <button className="tag-row" type="button" onClick={() => { setModal("settings"); setSidebarOpen(false); }}>
+            <Icon path={mdiCogOutline} size={0.75} /> Settings
+          </button>
+          </div>
           <div className="sidebar-footer">
-            <button type="button" onClick={() => setModal("import")}>
-              <Icon path={mdiUploadOutline} size={0.72} /> Import
+            <div className="server-status"><Icon path={mdiWifi} size={0.72} /> Server connection</div>
+            <button type="button" onClick={() => { setModal("shortcuts"); setSidebarOpen(false); }}>
+              Keyboard Shortcuts
             </button>
-            <button type="button" onClick={() => setModal("settings")}>
-              <Icon path={mdiCogOutline} size={0.72} /> Settings
+            <button type="button" onClick={() => toast("Quicknote is a local-first notes app.")}>
+              Help & Support&nbsp;&nbsp; About
             </button>
           </div>
         </aside>
@@ -404,6 +511,8 @@ function AppShell() {
                   isTrashView={isTrashView}
                   restoreNote={restoreSelectedNote}
                   deleteForever={deleteSelectedForever}
+                  isNarrow={isNarrow}
+                  tagInputRef={tagInputRef}
                 />
               ) : (
                 <div className="editor-empty">{isTrashView ? "Select a deleted note." : <Skeleton count={5} />}</div>
@@ -421,6 +530,8 @@ function AppShell() {
           onImport={() => setModal("import")}
           onExport={exportAllNotes}
         />
+        <ShortcutsModal isOpen={modal === "shortcuts"} onClose={() => setModal(null)} />
+        <CommandPaletteModal isOpen={modal === "command"} onClose={() => setModal(null)} commands={commandActions} />
         <ImportModal isOpen={modal === "import"} onClose={() => setModal(null)} />
       </div>
     </ThemeProvider>
@@ -456,23 +567,6 @@ function MobileTopBar({
       {iconButtonLabel("New note", mdiSquareEditOutline, createNote)}
       {iconButtonLabel("Settings", mdiCogOutline, openSettings)}
     </header>
-  );
-}
-
-function SortableTag({ tag, selected, onClick }: { tag: string; selected: boolean; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: tag });
-  return (
-    <button
-      ref={setNodeRef}
-      className={`tag-row ${selected ? "selected" : ""}`}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      type="button"
-      onClick={onClick}
-      {...attributes}
-      {...listeners}
-    >
-      <Icon path={mdiTagOutline} size={0.7} /> {tag}
-    </button>
   );
 }
 
@@ -515,9 +609,11 @@ function Editor(props: {
   isTrashView: boolean;
   restoreNote: () => void;
   deleteForever: () => void;
+  isNarrow: boolean;
+  tagInputRef: RefObject<HTMLInputElement | null>;
 }) {
   const [previewHtml, setPreviewHtml] = useState("");
-  const [previewMode, setPreviewMode] = useState<PreviewMode>(props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(props.isNarrow ? "edit" : props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
   const [infoOpen, setInfoOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -533,10 +629,10 @@ function Editor(props: {
   }, [props.note.content]);
 
   useEffect(() => {
-    setPreviewMode(props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
+    setPreviewMode(props.isNarrow ? "edit" : props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
     setInfoOpen(false);
     setMoreOpen(false);
-  }, [props.note.id]);
+  }, [props.note.id, props.isNarrow]);
 
   const words = props.note.content.trim() ? props.note.content.trim().split(/\s+/).length : 0;
   const characters = props.note.content.length;
@@ -560,6 +656,14 @@ function Editor(props: {
       setPreviewMode("edit");
     }
   }
+
+  useEffect(() => {
+    function handleTogglePreview() {
+      if (!props.isTrashView) togglePreview();
+    }
+    window.addEventListener("quicknote-toggle-preview", handleTogglePreview);
+    return () => window.removeEventListener("quicknote-toggle-preview", handleTogglePreview);
+  });
 
   function closeMenus() {
     setInfoOpen(false);
@@ -674,7 +778,7 @@ function Editor(props: {
       </div>}
       {!props.isTrashView ? <div className="tag-editor tag-editor-bottom">
         <div className="tag-chips">{props.note.tags.length ? props.note.tags.map(tag => <span key={tag}>#{tag}</span>) : <span>No tags</span>}</div>
-        <input value={props.tagDraft} onChange={event => props.setTagDraft(event.target.value)} placeholder="Add tags, comma separated" />
+        <input ref={props.tagInputRef} value={props.tagDraft} onChange={event => props.setTagDraft(event.target.value)} placeholder="Add tags, comma separated" />
         <button type="button" onClick={props.saveTags}>Save tags</button>
       </div> : null}
     </>
@@ -923,6 +1027,55 @@ function SettingsModal({
             </section>
           </div>
         ) : null}
+      </div>
+    </AppModal>
+  );
+}
+
+function ShortcutsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  return (
+    <AppModal isOpen={isOpen} onClose={onClose} title="Keyboard Shortcuts" className="shortcuts-modal">
+      <div className="shortcuts-panel">
+        {shortcutGroups.map(group => (
+          <section className="shortcut-section" key={group.title}>
+            <h3>{group.title}</h3>
+            <div className="shortcut-card">
+              {group.items.map(([keys, label]) => (
+                <div className="shortcut-row" key={keys}>
+                  <kbd>{keys}</kbd>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </AppModal>
+  );
+}
+
+function CommandPaletteModal({ isOpen, onClose, commands }: { isOpen: boolean; onClose: () => void; commands: Array<{ label: string; shortcut: string; action: () => void }> }) {
+  const [query, setQuery] = useState("");
+  const filtered = commands.filter(command => command.label.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <AppModal isOpen={isOpen} onClose={onClose} title="Command Palette" className="command-modal">
+      <div className="command-panel">
+        <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Search commands" autoFocus />
+        <div className="command-list">
+          {filtered.map(command => (
+            <button
+              type="button"
+              key={command.label}
+              onClick={() => {
+                onClose();
+                command.action();
+              }}
+            >
+              <span>{command.label}</span>
+              {command.shortcut ? <kbd>{command.shortcut}</kbd> : null}
+            </button>
+          ))}
+        </div>
       </div>
     </AppModal>
   );
