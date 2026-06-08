@@ -8,18 +8,28 @@ import "@fontsource/source-serif-4/700.css";
 import "katex/dist/katex.min.css";
 import "react-loading-skeleton/dist/skeleton.css";
 import { Global, ThemeProvider } from "@emotion/react";
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
+  mdiAlertCircle,
+  mdiAlertCircleOutline,
   mdiArchiveArrowDownOutline,
   mdiArrowLeft,
+  mdiCheck,
   mdiChevronLeft,
   mdiChevronRight,
   mdiClose,
   mdiCogOutline,
   mdiDeleteOutline,
   mdiDotsHorizontalCircleOutline,
+  mdiDragVertical,
   mdiDownloadOutline,
   mdiEyeOutline,
   mdiFilePdfBox,
+  mdiFolder,
+  mdiFolderOutline,
+  mdiFolderPlusOutline,
   mdiFormatListBulleted,
   mdiFormatListChecks,
   mdiInformationOutline,
@@ -28,7 +38,10 @@ import {
   mdiMenu,
   mdiPin,
   mdiPinOutline,
+  mdiPlus,
   mdiSquareEditOutline,
+  mdiStar,
+  mdiStarOutline,
   mdiUploadOutline,
   mdiViewSplitVertical,
   mdiWifi,
@@ -50,9 +63,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode, RefObject } from "react";
 import { CronosExpression, validate as validateCron } from "cronosjs";
-import { createNoteDraft, importNotesFromJson, type HistoryEntry, type Note, type SortMode } from "@/lib/noteLogic";
+import { createNoteDraft, importNotesFromJson, type Folder, type HistoryEntry, type Note, type SortMode } from "@/lib/noteLogic";
 import { getNoteWorker } from "@/workers/client";
-import { selectVisibleNotes, useNotesStore, type EditorFontFamily, type NoteDisplayMode, type Settings } from "@/store/notes";
+import { selectSortedFolders, selectVisibleNotes, useNotesStore, type EditorFontFamily, type NoteDisplayMode, type Settings } from "@/store/notes";
 import "./index.css";
 
 Modal.setAppElement("#root");
@@ -99,7 +112,7 @@ const shortcutGroups = [
   {
     title: "Navigation",
     items: [
-      ["Ctrl + Shift + U", "Toggle tag list"],
+      ["Ctrl + Shift + U", "Toggle tag/folder drawer"],
       ["Ctrl + Shift + K", "Open note above current one"],
       ["Ctrl + Shift + J", "Open note below current one"],
       ["Ctrl + Shift + Y", "Toggle editing content/tags"],
@@ -136,11 +149,27 @@ function AppShell() {
   const [noteListOpen, setNoteListOpen] = useState(true);
   const [isNarrow, setIsNarrow] = useState(false);
   const [tagDraft, setTagDraft] = useState("");
+  const [folderDraft, setFolderDraft] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const tagInputRef = useRef<HTMLInputElement>(null);
   const state = useNotesStore();
   const isTrashView = state.selectedTag === "trash";
+  const folders = useMemo(() => selectSortedFolders(state.folders), [state.folders]);
+  const selectedFolder = folders.find(folder => folder.id === state.selectedFolderId);
+  const folderCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const note of state.notes) {
+      if (!note.deletedAt && note.folderId) counts.set(note.folderId, (counts.get(note.folderId) || 0) + 1);
+    }
+    return counts;
+  }, [state.notes]);
+  const folderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const visibleNotes = useMemo(() => {
     if (!isTrashView) return selectVisibleNotes(state);
     const query = state.query.trim().toLowerCase();
@@ -148,11 +177,11 @@ function AppShell() {
       .filter(note => note.deletedAt)
       .filter(note => !query || [note.title, note.content, ...note.tags].join(" ").toLowerCase().includes(query))
       .sort((a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || ""));
-  }, [isTrashView, state.notes, state.query, state.selectedTag, state.settings.sortMode]);
+  }, [isTrashView, state.notes, state.query, state.selectedFolderId, state.selectedTag, state.settings.sortMode]);
   const deletedNotes = state.notes.filter(note => note.deletedAt);
   const selectedNote = isTrashView
     ? state.notes.find(note => note.id === state.selectedNoteId && note.deletedAt) || visibleNotes[0]
-    : state.notes.find(note => note.id === state.selectedNoteId && !note.deletedAt) || visibleNotes[0] || state.notes.find(note => !note.deletedAt);
+    : visibleNotes.find(note => note.id === state.selectedNoteId) || visibleNotes[0] || state.notes.find(note => !note.deletedAt);
 
   useEffect(() => {
     if (typeof matchMedia === "undefined") return;
@@ -181,7 +210,7 @@ function AppShell() {
     const unsubscribe = useNotesStore.subscribe(current => {
       if (typeof BroadcastChannel === "undefined") return;
       const channel = new BroadcastChannel("quicknote-sync");
-      channel.postMessage({ type: "updated", notes: current.notes, settings: current.settings });
+      channel.postMessage({ type: "updated", notes: current.notes, folders: current.folders, settings: current.settings });
       channel.close();
     });
     return unsubscribe;
@@ -199,9 +228,7 @@ function AppShell() {
     });
     hotkeys("ctrl+shift+i,command+n", event => {
       event.preventDefault();
-      const id = state.createNote("", state.selectedTag === "all" || state.selectedTag === "trash" ? [] : [state.selectedTag]);
-      setLocation(`/note/${id}`);
-      setMobilePane("editor");
+      createNote();
       toast.success("New note created");
     });
     hotkeys("ctrl+shift+s,command+l", event => {
@@ -253,7 +280,7 @@ function AppShell() {
       state.replaceSettings({ focusMode: !state.settings.focusMode });
     });
     return () => hotkeys.unbind("ctrl+/,ctrl+k,ctrl+shift+i,command+n,ctrl+shift+s,command+l,ctrl+g,ctrl+shift+g,ctrl+shift+u,ctrl+shift+k,ctrl+shift+j,ctrl+shift+y,ctrl+shift+l,ctrl+shift+p,ctrl+shift+c,ctrl+h,ctrl+shift+f");
-  }, [selectedNote?.id, state.query, state.settings.focusMode, state.settings.keyboardShortcuts, state.selectedTag, visibleNotes]);
+  }, [selectedNote?.id, state.query, state.settings.focusMode, state.settings.keyboardShortcuts, state.selectedFolderId, state.selectedTag, visibleNotes]);
 
   useEffect(() => {
     const match = location.match(/^\/note\/(.+)$/);
@@ -265,7 +292,12 @@ function AppShell() {
   }, [location, state.notes.length]);
 
   function createNote() {
-    const id = state.createNote("", state.selectedTag === "all" || isTrashView ? [] : [state.selectedTag]);
+    const specialViews = new Set(["all", "trash", "pinned", "favorites", "important"]);
+    const tags = specialViews.has(state.selectedTag) ? [] : [state.selectedTag];
+    const id = state.createNote("", tags, isTrashView ? null : state.selectedFolderId);
+    if (state.selectedTag === "pinned") state.togglePin(id);
+    if (state.selectedTag === "favorites") state.toggleFavorite(id);
+    if (state.selectedTag === "important") state.toggleImportant(id);
     if (isTrashView) state.setSelectedTag("all");
     setLocation(`/note/${id}`);
     setMobilePane("editor");
@@ -345,8 +377,69 @@ function AppShell() {
     toast.success("Tags updated");
   }
 
+  function createFolder() {
+    const name = folderDraft.trim();
+    if (!name) {
+      toast.error("Folder name is empty");
+      return;
+    }
+    state.createFolder(name);
+    setFolderDraft("");
+    setSidebarOpen(true);
+    toast.success("Folder created");
+  }
+
+  function startRenameFolder(folder: Folder) {
+    setEditingFolderId(folder.id);
+    setEditingFolderName(folder.name);
+  }
+
+  function saveFolderRename(folderId: string) {
+    if (!editingFolderName.trim()) {
+      toast.error("Folder name is empty");
+      return;
+    }
+    state.renameFolder(folderId, editingFolderName);
+    setEditingFolderId(null);
+    setEditingFolderName("");
+    toast.success("Folder renamed");
+  }
+
+  function removeFolder(folder: Folder) {
+    const count = folderCounts.get(folder.id) || 0;
+    const message = count > 0
+      ? `Delete "${folder.name}"? ${count} notes will move to No folder.`
+      : `Delete "${folder.name}"?`;
+    if (!globalThis.confirm(message)) return;
+    state.deleteFolder(folder.id);
+    toast.success("Folder deleted");
+  }
+
+  function selectFolder(folder: Folder) {
+    state.setSelectedFolder(folder.id);
+    setSidebarOpen(false);
+    setMobilePane("list");
+  }
+
+  function selectSpecialView(tag: string) {
+    state.setSelectedTag(tag);
+    setSidebarOpen(false);
+    setMobilePane("list");
+  }
+
+  function onFolderDragEnd(event: DragEndEvent) {
+    const activeId = String(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : "";
+    if (overId && activeId !== overId) state.reorderFolder(activeId, overId);
+  }
+
   const currentViewTitle =
-    state.selectedTag === "all" ? "All Notes" : state.selectedTag === "pinned" ? "Pinned" : state.selectedTag === "trash" ? "Trash" : `#${state.selectedTag}`;
+    selectedFolder ? selectedFolder.name :
+      state.selectedTag === "all" ? "All Notes" :
+        state.selectedTag === "pinned" ? "Pinned" :
+          state.selectedTag === "favorites" ? "Favorites" :
+            state.selectedTag === "important" ? "Important" :
+              state.selectedTag === "trash" ? "Trash" : `#${state.selectedTag}`;
 
   function openTrash() {
     state.setSelectedTag("trash");
@@ -390,8 +483,9 @@ function AppShell() {
     { label: "Create new note", shortcut: "Ctrl + Shift + I", action: createNote },
     { label: "Focus search field", shortcut: "Ctrl + Shift + S", action: () => searchRef.current?.focus() },
     { label: "Toggle focus mode", shortcut: "Ctrl + Shift + F", action: () => state.replaceSettings({ focusMode: !state.settings.focusMode }) },
-    { label: "Toggle tag list", shortcut: "Ctrl + Shift + U", action: () => setSidebarOpen(value => !value) },
+    { label: "Toggle tag/folder drawer", shortcut: "Ctrl + Shift + U", action: () => setSidebarOpen(value => !value) },
     { label: "Toggle note list", shortcut: "Ctrl + Shift + L", action: () => setNoteListOpen(value => !value) },
+    { label: "Open folder manager", shortcut: "", action: () => setSidebarOpen(true) },
     { label: "Keyboard shortcuts", shortcut: "Ctrl + /", action: () => setModal("shortcuts") },
     { label: "Settings", shortcut: "", action: () => setModal("settings") },
   ];
@@ -415,16 +509,67 @@ function AppShell() {
         {sidebarOpen ? <button className="sidebar-backdrop" type="button" aria-label="Close sidebar" onClick={() => setSidebarOpen(false)} /> : null}
         <aside className={`tag-pane ${sidebarOpen ? "mobile-open" : ""}`}>
           <div className="app-menu-main">
-          <button className={`tag-row ${state.selectedTag === "all" ? "selected" : ""}`} type="button" onClick={() => { state.setSelectedTag("all"); setSidebarOpen(false); }}>
-            <Icon path={mdiArchiveArrowDownOutline} size={0.75} /> All Notes
-          </button>
-          <button className={`tag-row ${state.selectedTag === "trash" ? "selected" : ""}`} type="button" onClick={openTrash}>
-            <Icon path={mdiDeleteOutline} size={0.75} /> Trash
-            {deletedNotes.length > 0 ? <span className="count-pill">{deletedNotes.length}</span> : null}
-          </button>
-          <button className="tag-row" type="button" onClick={() => { setModal("settings"); setSidebarOpen(false); }}>
-            <Icon path={mdiCogOutline} size={0.75} /> Settings
-          </button>
+            <button className={`tag-row ${state.selectedTag === "all" && !state.selectedFolderId ? "selected" : ""}`} type="button" onClick={() => selectSpecialView("all")}>
+              <Icon path={mdiArchiveArrowDownOutline} size={0.75} /> All Notes
+            </button>
+            <button className={`tag-row ${state.selectedTag === "trash" ? "selected" : ""}`} type="button" onClick={openTrash}>
+              <Icon path={mdiDeleteOutline} size={0.75} /> Trash
+              {deletedNotes.length > 0 ? <span className="count-pill">{deletedNotes.length}</span> : null}
+            </button>
+            <button className="tag-row" type="button" onClick={() => { setModal("settings"); setSidebarOpen(false); }}>
+              <Icon path={mdiCogOutline} size={0.75} /> Settings
+            </button>
+          </div>
+          <div className="sidebar-scroll">
+            <section className="sidebar-section">
+              <p className="sidebar-section-title">Quick filters</p>
+              <button className={`tag-row compact ${state.selectedTag === "pinned" ? "selected" : ""}`} type="button" onClick={() => selectSpecialView("pinned")}>
+                <Icon path={mdiPinOutline} size={0.72} /> Pinned
+                <span className="count-pill">{state.notes.filter(note => !note.deletedAt && note.isPinned).length}</span>
+              </button>
+              <button className={`tag-row compact ${state.selectedTag === "favorites" ? "selected" : ""}`} type="button" onClick={() => selectSpecialView("favorites")}>
+                <Icon path={mdiStarOutline} size={0.72} /> Favorites
+                <span className="count-pill">{state.notes.filter(note => !note.deletedAt && note.isFavorite).length}</span>
+              </button>
+              <button className={`tag-row compact ${state.selectedTag === "important" ? "selected" : ""}`} type="button" onClick={() => selectSpecialView("important")}>
+                <Icon path={mdiAlertCircleOutline} size={0.72} /> Important
+                <span className="count-pill">{state.notes.filter(note => !note.deletedAt && note.isImportant).length}</span>
+              </button>
+            </section>
+            <section className="sidebar-section">
+              <div className="folder-section-head">
+                <p className="sidebar-section-title">Folders</p>
+                <Icon path={mdiFolderPlusOutline} size={0.72} />
+              </div>
+              <form className="folder-create-form" onSubmit={event => { event.preventDefault(); createFolder(); }}>
+                <input value={folderDraft} onChange={event => setFolderDraft(event.target.value)} placeholder="New folder" maxLength={48} />
+                <button type="submit" aria-label="Create folder">
+                  <Icon path={mdiPlus} size={0.68} />
+                </button>
+              </form>
+              <DndContext sensors={folderSensors} collisionDetection={closestCenter} onDragEnd={onFolderDragEnd}>
+                <SortableContext items={folders.map(folder => folder.id)} strategy={verticalListSortingStrategy}>
+                  <div className="folder-list">
+                    {folders.map(folder => (
+                      <FolderNavItem
+                        key={folder.id}
+                        folder={folder}
+                        count={folderCounts.get(folder.id) || 0}
+                        selected={state.selectedFolderId === folder.id}
+                        editing={editingFolderId === folder.id}
+                        editValue={editingFolderName}
+                        onEditChange={setEditingFolderName}
+                        onSelect={() => selectFolder(folder)}
+                        onStartEdit={() => startRenameFolder(folder)}
+                        onCancelEdit={() => { setEditingFolderId(null); setEditingFolderName(""); }}
+                        onSaveEdit={() => saveFolderRename(folder.id)}
+                        onDelete={() => removeFolder(folder)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </section>
           </div>
           <div className="sidebar-footer">
             <div className="server-status"><Icon path={mdiWifi} size={0.72} /> Server connection</div>
@@ -448,7 +593,7 @@ function AppShell() {
           </div>
           <div className="search-row">
             <Icon path={mdiMagnify} size={0.8} />
-            <input ref={searchRef} value={state.query} onChange={event => state.setQuery(event.target.value)} placeholder="Search all notes and tags" />
+            <input ref={searchRef} value={state.query} onChange={event => state.setQuery(event.target.value)} placeholder={selectedFolder ? `Search ${selectedFolder.name}` : "Search all notes and tags"} />
             <select aria-label="Sort notes" value={state.settings.sortMode} onChange={event => state.replaceSettings({ sortMode: event.target.value as SortMode })}>
               <option value="modified-desc">Modified: Newest</option>
               <option value="modified-asc">Modified: Oldest</option>
@@ -469,8 +614,11 @@ function AppShell() {
                   note={note}
                   selected={note.id === selectedNote?.id}
                   previewLines={state.settings.previewLines}
+                  folderName={folders.find(folder => folder.id === note.folderId)?.name}
                   onSelect={() => selectNote(note)}
                   onPin={() => state.togglePin(note.id)}
+                  onFavorite={() => state.toggleFavorite(note.id)}
+                  onImportant={() => state.toggleImportant(note.id)}
                   isTrashView={isTrashView}
                 />
               )}
@@ -494,7 +642,10 @@ function AppShell() {
                   setModal={setModal}
                   updateContent={content => state.updateNote(selectedNote.id, content)}
                   togglePin={() => state.togglePin(selectedNote.id)}
+                  toggleFavorite={() => state.toggleFavorite(selectedNote.id)}
+                  toggleImportant={() => state.toggleImportant(selectedNote.id)}
                   toggleMarkdown={() => state.toggleMarkdown(selectedNote.id)}
+                  moveNoteToFolder={folderId => state.moveNoteToFolder(selectedNote.id, folderId)}
                   deleteNote={() => {
                     state.deleteNote(selectedNote.id);
                     toast.success("Note moved to trash");
@@ -513,6 +664,7 @@ function AppShell() {
                   deleteForever={deleteSelectedForever}
                   isNarrow={isNarrow}
                   tagInputRef={tagInputRef}
+                  folders={folders}
                 />
               ) : (
                 <div className="editor-empty">{isTrashView ? "Select a deleted note." : <Skeleton count={5} />}</div>
@@ -570,18 +722,114 @@ function MobileTopBar({
   );
 }
 
-function NoteListItem({ note, selected, previewLines, onSelect, onPin, isTrashView = false }: { note: Note; selected: boolean; previewLines: number; onSelect: () => void; onPin: () => void; isTrashView?: boolean }) {
+function FolderNavItem({
+  folder,
+  count,
+  selected,
+  editing,
+  editValue,
+  onEditChange,
+  onSelect,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: {
+  folder: Folder;
+  count: number;
+  selected: boolean;
+  editing: boolean;
+  editValue: string;
+  onEditChange: (value: string) => void;
+  onSelect: () => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: folder.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className={`folder-row ${selected ? "selected" : ""} ${isDragging ? "is-dragging" : ""}`}>
+      <button className="folder-drag" type="button" aria-label={`Drag ${folder.name}`} {...attributes} {...listeners}>
+        <Icon path={mdiDragVertical} size={0.62} />
+      </button>
+      {editing ? (
+        <form className="folder-edit-form" onSubmit={event => { event.preventDefault(); onSaveEdit(); }}>
+          <input value={editValue} onChange={event => onEditChange(event.target.value)} autoFocus maxLength={48} />
+          <button type="submit" aria-label="Save folder">
+            <Icon path={mdiCheck} size={0.62} />
+          </button>
+          <button type="button" aria-label="Cancel folder edit" onClick={onCancelEdit}>
+            <Icon path={mdiClose} size={0.62} />
+          </button>
+        </form>
+      ) : (
+        <>
+          <button className="folder-main" type="button" onClick={onSelect}>
+            <Icon path={selected ? mdiFolder : mdiFolderOutline} size={0.72} />
+            <span>{folder.name}</span>
+            <em>{count}</em>
+          </button>
+          <button className="folder-mini-action" type="button" aria-label={`Rename ${folder.name}`} onClick={onStartEdit}>
+            <Icon path={mdiSquareEditOutline} size={0.6} />
+          </button>
+          <button className="folder-mini-action danger" type="button" aria-label={`Delete ${folder.name}`} onClick={onDelete}>
+            <Icon path={mdiClose} size={0.6} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function NoteListItem({
+  note,
+  selected,
+  previewLines,
+  folderName,
+  onSelect,
+  onPin,
+  onFavorite,
+  onImportant,
+  isTrashView = false,
+}: {
+  note: Note;
+  selected: boolean;
+  previewLines: number;
+  folderName?: string;
+  onSelect: () => void;
+  onPin: () => void;
+  onFavorite: () => void;
+  onImportant: () => void;
+  isTrashView?: boolean;
+}) {
   return (
     <article className={`note-list-item ${selected ? "selected" : ""}`} onClick={onSelect}>
       <div className="note-list-title">
         <span>{note.title}</span>
-        {!isTrashView ? <button type="button" aria-label="Toggle pin" onClick={event => { event.stopPropagation(); onPin(); }}>
-          <Icon path={note.isPinned ? mdiPin : mdiPinOutline} size={0.68} />
-        </button> : null}
+        {!isTrashView ? (
+          <div className="note-mark-buttons">
+            <button type="button" className={note.isPinned ? "active" : ""} aria-label="Toggle pin" onClick={event => { event.stopPropagation(); onPin(); }}>
+              <Icon path={note.isPinned ? mdiPin : mdiPinOutline} size={0.62} />
+            </button>
+            <button type="button" className={note.isFavorite ? "active favorite" : ""} aria-label="Toggle favorite" onClick={event => { event.stopPropagation(); onFavorite(); }}>
+              <Icon path={note.isFavorite ? mdiStar : mdiStarOutline} size={0.62} />
+            </button>
+            <button type="button" className={note.isImportant ? "active important" : ""} aria-label="Toggle important" onClick={event => { event.stopPropagation(); onImportant(); }}>
+              <Icon path={note.isImportant ? mdiAlertCircle : mdiAlertCircleOutline} size={0.62} />
+            </button>
+          </div>
+        ) : null}
       </div>
       <p style={{ WebkitLineClamp: previewLines }}>{note.content.replace(/\s+/g, " ") || "Empty note"}</p>
       <div className="note-meta">
         <span>{isTrashView && note.deletedAt ? `Deleted ${timeagoFormat(note.deletedAt)}` : timeagoFormat(note.updatedAt)}</span>
+        {folderName ? <span className="folder-chip"><Icon path={mdiFolderOutline} size={0.55} /> {folderName}</span> : null}
         {note.tags.slice(0, 2).map(tag => <span key={tag}>#{tag}</span>)}
       </div>
     </article>
@@ -595,7 +843,10 @@ function Editor(props: {
   setModal: (modal: ModalName) => void;
   updateContent: (content: string) => void;
   togglePin: () => void;
+  toggleFavorite: () => void;
+  toggleImportant: () => void;
   toggleMarkdown: () => void;
+  moveNoteToFolder: (folderId: string | null) => void;
   deleteNote: () => void;
   insertChecklist: () => void;
   tagDraft: string;
@@ -611,6 +862,7 @@ function Editor(props: {
   deleteForever: () => void;
   isNarrow: boolean;
   tagInputRef: RefObject<HTMLInputElement | null>;
+  folders: Folder[];
 }) {
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewMode, setPreviewMode] = useState<PreviewMode>(props.isNarrow ? "edit" : props.note.isMarkdown || looksLikeMarkdown(props.note.content) ? "split" : "edit");
@@ -694,6 +946,11 @@ function Editor(props: {
               <span>{dayjs(props.note.updatedAt).fromNow?.() || dayjs(props.note.updatedAt).format("MMM D")}</span>
             </div>
             <div className="toolbar-actions">
+          <div className="note-status-actions">
+            {iconButtonLabel("Pin to top", props.note.isPinned ? mdiPin : mdiPinOutline, props.togglePin, props.note.isPinned)}
+            {iconButtonLabel("Favorite", props.note.isFavorite ? mdiStar : mdiStarOutline, props.toggleFavorite, props.note.isFavorite)}
+            {iconButtonLabel("Important", props.note.isImportant ? mdiAlertCircle : mdiAlertCircleOutline, props.toggleImportant, props.note.isImportant)}
+          </div>
           {iconButtonLabel(previewMode === "edit" ? "Show preview" : "Hide preview", mdiEyeOutline, togglePreview, previewMode !== "edit")}
           {iconButtonLabel("Insert checklist", mdiFormatListChecks, props.insertChecklist)}
           <div className="toolbar-popover-wrap">
@@ -729,6 +986,14 @@ function Editor(props: {
                 <label className="menu-check">
                   <span>Pin to top</span>
                   <input type="checkbox" checked={props.note.isPinned} onChange={props.togglePin} />
+                </label>
+                <label className="menu-check">
+                  <span>Favorite</span>
+                  <input type="checkbox" checked={props.note.isFavorite} onChange={props.toggleFavorite} />
+                </label>
+                <label className="menu-check">
+                  <span>Important</span>
+                  <input type="checkbox" checked={props.note.isImportant} onChange={props.toggleImportant} />
                 </label>
                 <label className="menu-check">
                   <span>Markdown</span>
@@ -778,6 +1043,10 @@ function Editor(props: {
       </div>}
       {!props.isTrashView ? <div className="tag-editor tag-editor-bottom">
         <div className="tag-chips">{props.note.tags.length ? props.note.tags.map(tag => <span key={tag}>#{tag}</span>) : <span>No tags</span>}</div>
+        <select aria-label="Move note to folder" value={props.note.folderId || ""} onChange={event => props.moveNoteToFolder(event.target.value || null)}>
+          <option value="">No folder</option>
+          {props.folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+        </select>
         <input ref={props.tagInputRef} value={props.tagDraft} onChange={event => props.setTagDraft(event.target.value)} placeholder="Add tags, comma separated" />
         <button type="button" onClick={props.saveTags}>Save tags</button>
       </div> : null}

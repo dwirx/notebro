@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Added folder/category organization with persisted folders, folder-aware note creation, folder filtering, rename/delete actions, and drag-and-drop folder ordering.
+- Added separate Favorite and Important note markers alongside Pin, with quick filters and icon controls.
+- Added a desktop editor folder picker for moving notes between folders.
 - Added a Simplenote-style document information popover with synced, modified, created, word, and character details.
 - Added an overflow actions menu for pin, Markdown, copy link, history, publish, collaborate, and trash actions.
 - Added a Simplenote-style app drawer menu with All Notes, Trash, Settings, server status, Keyboard Shortcuts, Help, and About entries.
@@ -22,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Reworked note list metadata to show folder context without exposing internal folder IDs.
+- Reworked the drawer into main navigation, quick filters, and a compact folder manager.
 - Reworked the editor toolbar into compact icon actions for preview, checklist, document info, and more actions.
 - Reworked the note-list header to match the compact Simplenote-style toolbar with icon-only new note and focus mode controls.
 - Reworked the mobile editor into a Simplenote-style single toolbar with back, preview, checklist, info, and overflow actions.
@@ -32,6 +37,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Fixed folder-filtered views so the editor follows the active folder list instead of keeping an out-of-folder note selected.
+- Fixed imported legacy notes so missing folder, Favorite, and Important fields are normalized before storage.
 - Removed the duplicated notes-list hide/show control from the editor toolbar.
 - Simplified the hidden-notes reveal button so it appears as a single compact `Notes` action.
 - Fixed direct mobile note routes so `/note/:id` opens the editor pane instead of the note list.
@@ -39,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Documentation
 
+- Expanded the README with folder workflows, Pin/Favorite/Important behavior, keyboard shortcuts, storage details, and verification steps.
 - Replaced the default Bun template README with product documentation for Quicknote.
 - Added this changelog using the Keep a Changelog structure.
 

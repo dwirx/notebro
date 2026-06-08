@@ -17,8 +17,11 @@ function note(overrides: Partial<Note>): Note {
     title: "Untitled",
     content: "",
     tags: [],
+    folderId: null,
     collaborators: [],
     isPinned: false,
+    isFavorite: false,
+    isImportant: false,
     isMarkdown: false,
     isPublished: false,
     shareSlug: "",
@@ -65,6 +68,16 @@ describe("note logic", () => {
     ];
 
     expect(filterNotes(notes, "ship", "work").map(item => item.id)).toEqual(["b"]);
+  });
+
+  test("filters by selected folder independently from tags", () => {
+    const notes = [
+      note({ id: "a", title: "Inbox", content: "project", tags: ["work"], folderId: "inbox" }),
+      note({ id: "b", title: "Client", content: "project", tags: ["work"], folderId: "clients" }),
+      note({ id: "c", title: "Personal", content: "project", tags: ["home"], folderId: "home" }),
+    ];
+
+    expect(filterNotes(notes, "project", "work", false, "clients").map(item => item.id)).toEqual(["b"]);
   });
 
   test("round trips notes through JSON export and import", () => {

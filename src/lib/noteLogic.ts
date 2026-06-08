@@ -7,13 +7,24 @@ export type HistoryEntry = {
   createdAt: string;
 };
 
+export type Folder = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  order: number;
+};
+
 export type Note = {
   id: string;
   title: string;
   content: string;
   tags: string[];
+  folderId: string | null;
   collaborators: string[];
   isPinned: boolean;
+  isFavorite: boolean;
+  isImportant: boolean;
   isMarkdown: boolean;
   isPublished: boolean;
   shareSlug: string;
@@ -33,14 +44,17 @@ export function titleFromContent(content: string): string {
     ?.slice(0, 80) || fallbackTitle;
 }
 
-export function createNoteDraft(content = "", tags: string[] = [], now = new Date().toISOString()): Note {
+export function createNoteDraft(content = "", tags: string[] = [], now = new Date().toISOString(), folderId: string | null = null): Note {
   return {
     id: crypto.randomUUID(),
     title: titleFromContent(content),
     content,
     tags: normalizeTags(tags),
+    folderId,
     collaborators: [],
     isPinned: false,
+    isFavorite: false,
+    isImportant: false,
     isMarkdown: false,
     isPublished: false,
     shareSlug: "",
@@ -99,12 +113,13 @@ export function sortNotes(notes: Note[], sortMode: SortMode): Note[] {
   });
 }
 
-export function filterNotes(notes: Note[], query: string, selectedTag = "all", includeDeleted = false): Note[] {
+export function filterNotes(notes: Note[], query: string, selectedTag = "all", includeDeleted = false, selectedFolderId: string | null = null): Note[] {
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedTag = selectedTag.trim().toLowerCase();
 
   return notes.filter(note => {
     if (!includeDeleted && note.deletedAt) return false;
+    if (selectedFolderId && note.folderId !== selectedFolderId) return false;
     if (normalizedTag !== "all" && !note.tags.includes(normalizedTag)) return false;
     if (!normalizedQuery) return true;
 

@@ -184,6 +184,157 @@ button {
   color: var(--muted);
 }
 
+.sidebar-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 0;
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 6px;
+}
+
+.sidebar-section-title {
+  margin: 0;
+  padding: 0 18px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tag-row.compact {
+  min-height: 34px;
+  padding: 0 18px;
+  font-weight: 600;
+}
+
+.folder-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 18px;
+  color: var(--muted);
+}
+
+.folder-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 6px;
+  padding: 0 12px 4px 18px;
+}
+
+.folder-create-form input,
+.folder-edit-form input {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  padding: 0 9px;
+  outline: none;
+}
+
+.folder-create-form button,
+.folder-edit-form button,
+.folder-drag,
+.folder-mini-action {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.folder-create-form button:hover,
+.folder-edit-form button:hover,
+.folder-drag:hover,
+.folder-mini-action:hover {
+  background: var(--raised);
+  color: var(--ink);
+}
+
+.folder-list {
+  display: grid;
+  gap: 2px;
+  padding: 0 8px 0 10px;
+}
+
+.folder-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 30px 30px;
+  align-items: center;
+  min-height: 36px;
+  border-radius: var(--radius);
+}
+
+.folder-row.selected,
+.folder-row:hover {
+  background: var(--primary-soft);
+}
+
+.folder-row.is-dragging {
+  opacity: 0.72;
+}
+
+.folder-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.folder-main span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-main em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.folder-edit-form {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px 30px;
+  gap: 4px;
+  padding-right: 2px;
+}
+
+.folder-mini-action {
+  opacity: 0;
+}
+
+.folder-row:hover .folder-mini-action,
+.folder-row:focus-within .folder-mini-action {
+  opacity: 1;
+}
+
+.folder-mini-action.danger:hover {
+  color: var(--danger);
+}
+
 .tag-row:hover,
 .tag-row.selected,
 .icon-button:hover,
@@ -286,6 +437,7 @@ button {
 
 .search-row input,
 .tag-editor input,
+.tag-editor select,
 .inline-form input,
 .settings-grid input,
 .settings-grid select,
@@ -409,11 +561,35 @@ button {
 .note-list-title button {
   display: grid;
   place-items: center;
-  margin-left: auto;
   border: 0;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
+}
+
+.note-mark-buttons {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+}
+
+.note-mark-buttons button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.note-mark-buttons button.active {
+  color: var(--primary);
+}
+
+.note-mark-buttons button.favorite {
+  color: var(--accent);
+}
+
+.note-mark-buttons button.important {
+  color: var(--danger);
 }
 
 .note-list-item p {
@@ -444,6 +620,12 @@ button {
   background: var(--surface);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.note-meta .folder-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .editor-pane {
@@ -519,6 +701,12 @@ button {
   align-items: center;
   gap: 2px;
   margin-left: auto;
+}
+
+.note-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .trash-note-actions {
@@ -716,7 +904,7 @@ button {
 
 .tag-editor {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 320px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 190px) minmax(180px, 320px) auto;
   gap: 8px;
   align-items: center;
   min-height: 32px;
@@ -730,6 +918,12 @@ button {
 
 .tag-editor-bottom input {
   min-height: 28px;
+  font-size: 12px;
+}
+
+.tag-editor-bottom select {
+  min-height: 28px;
+  background: var(--bg);
   font-size: 12px;
 }
 
@@ -1534,13 +1728,29 @@ del {
     margin-left: 16px;
   }
 
+  .note-status-actions {
+    display: none;
+  }
+
   .icon-button,
   .primary-action,
   .sidebar-footer button,
   .tag-row,
+  .folder-row,
+  .folder-main,
+  .folder-drag,
+  .folder-mini-action,
   .tag-editor button {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .folder-row {
+    grid-template-columns: 38px minmax(0, 1fr) 38px 38px;
+  }
+
+  .folder-mini-action {
+    opacity: 1;
   }
 
   .app-shell.note-list-hidden .note-list-pane {
@@ -1601,6 +1811,7 @@ del {
   }
 
   .tag-editor-bottom input,
+  .tag-editor-bottom select,
   .tag-editor-bottom button,
   .tag-editor-bottom .tag-chips {
     display: none;
